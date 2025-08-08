@@ -10,6 +10,14 @@ import time
 device = "mps" if torch.backends.mps.is_available() else "cpu"
 print(f"Using device: {device}")
 
+# Create the named window before starting capture
+win_name = "YOLO Detection + Pose (Full Frame, Half Precision)"
+cv2.namedWindow(win_name, cv2.WINDOW_NORMAL | cv2.WINDOW_FREERATIO)
+
+# Optional: manually maximize to screen size (macOS-safe)
+screen_res = 1920, 1080  # adjust if you know your display resolution
+cv2.resizeWindow(win_name, *screen_res)
+
 # Load smaller models and switch to half precision for speed
 det_model = YOLO("yolov8n.pt").to(device).half()
 pose_model = YOLO("yolov8n-pose.pt").to(device).half()
@@ -107,7 +115,7 @@ while True:
     cv2.putText(frame, f"FPS: {fps:.1f}", (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-    cv2.imshow("YOLO Detection + Pose (Full Frame, Half Precision)", frame)
+    cv2.imshow(win_name, frame)
 
     key = cv2.waitKey(1) & 0xFF
     if key == ord('q'):

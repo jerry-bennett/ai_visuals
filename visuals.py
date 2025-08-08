@@ -42,25 +42,26 @@ cap = cv2.VideoCapture(0)
 prev_time = time.time()
 fps = 0
 
+pose_interval = 3  # Run pose every 3 frames
+frame_idx = 0
+pose_results = []  # Cache last pose results
+
 while True:
     ret, frame = cap.read()
     if not ret:
         break
 
-    # Resize to smaller input size
     small_frame = cv2.resize(frame, (320, 180))
 
-    # Convert to float16 tensor and move to device
-    # The ultralytics YOLO wrapper handles numpy->tensor internally, 
-    # but we can set the dtype globally by half() on the model (done above).
-
-    det_results = det_model(small_frame, verbose=False)
-    pose_results = pose_model(small_frame, verbose=False)
+    with torch.no_grad():
+        det_results = det_model(small_frame, verbose=False)
+        if frame_idx % pose_interval == 0:
+            pose_results = pose_model(small_frame, verbose=False)
 
     scale_x = frame.shape[1] / small_frame.shape[1]
     scale_y = frame.shape[0] / small_frame.shape[0]
 
-    # Draw boxes on full res frame
+    # Draw detection boxes on full res frame
     for res in det_results:
         boxes = res.boxes.xyxy.cpu().numpy()
         classes = res.boxes.cls.cpu().numpy()
@@ -74,7 +75,7 @@ while True:
             cv2.putText(frame, f"{label} {score:.2f}", (x1o, y1o - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
-    # Draw skeletons on full res frame
+    # Draw pose skeletons on full res frame (from cached results)
     for res in pose_results:
         if res.keypoints is None:
             continue
@@ -116,6 +117,8 @@ while True:
         current_palette = PALETTES[palette_index]
         track_colors.clear()
         print(f"Switched to palette #{palette_index + 1}")
+
+    frame_idx += 1
 
 cap.release()
 cv2.destroyAllWindows()

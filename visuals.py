@@ -6,19 +6,31 @@ from ultralytics import YOLO
 import cv2
 import numpy as np
 import time
+import subprocess
 
 device = "mps" if torch.backends.mps.is_available() else "cpu"
 print(f"Using device: {device}")
 
-# Create the named window before starting capture
+# Function to get Mac display resolution
+def get_screen_resolution():
+    try:
+        cmd = "system_profiler SPDisplaysDataType | grep Resolution"
+        output = subprocess.check_output(cmd, shell=True).decode()
+        parts = output.strip().split()
+        width = int(parts[1])
+        height = int(parts[3])
+        return width, height
+    except Exception as e:
+        print(f"Could not detect screen resolution: {e}")
+        return 1920, 1080  # Fallback
+
+screen_width, screen_height = get_screen_resolution()
+
+# Create named window
 win_name = "YOLO Detection + Pose (Full Frame, Half Precision)"
 cv2.namedWindow(win_name, cv2.WINDOW_NORMAL | cv2.WINDOW_FREERATIO)
 
-# Optional: manually maximize to screen size (macOS-safe)
-screen_res = 1920, 1080  # adjust if you know your display resolution
-cv2.resizeWindow(win_name, *screen_res)
-
-# Load smaller models and switch to half precision for speed
+# Load models
 det_model = YOLO("yolov8n.pt").to(device).half()
 pose_model = YOLO("yolov8n-pose.pt").to(device).half()
 
@@ -50,9 +62,9 @@ cap = cv2.VideoCapture(0)
 prev_time = time.time()
 fps = 0
 
-pose_interval = 3  # Run pose every 3 frames
+pose_interval = 3
 frame_idx = 0
-pose_results = []  # Cache last pose results
+pose_results = []
 
 while True:
     ret, frame = cap.read()
@@ -69,7 +81,7 @@ while True:
     scale_x = frame.shape[1] / small_frame.shape[1]
     scale_y = frame.shape[0] / small_frame.shape[0]
 
-    # Draw detection boxes on full res frame
+    # Draw detection boxes
     for res in det_results:
         boxes = res.boxes.xyxy.cpu().numpy()
         classes = res.boxes.cls.cpu().numpy()
@@ -83,7 +95,7 @@ while True:
             cv2.putText(frame, f"{label} {score:.2f}", (x1o, y1o - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
-    # Draw pose skeletons on full res frame (from cached results)
+    # Draw pose skeletons
     for res in pose_results:
         if res.keypoints is None:
             continue
@@ -108,12 +120,22 @@ while True:
             cv2.putText(frame, f"ID:{track_id}", tuple(person_kpts[0] + [5, -5]),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
-    # FPS calc and display
+    # FPS calc
     curr_time = time.time()
     fps = 0.9 * fps + 0.1 * (1 / (curr_time - prev_time))
     prev_time = curr_time
-    cv2.putText(frame, f"FPS: {fps:.1f}", (10, 30),
+
+    # HUD panel (right side)
+    panel_width = 300
+    panel = np.zeros((frame.shape[0], panel_width, 3), dtype=np.uint8)
+    cv2.putText(panel, f"FPS: {fps:.1f}", (10, 40),
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    cv2.putText(panel, f"Objects: {len(det_results[0].boxes) if det_results else 0}",
+                (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
+
+    # Merge and scale to screen size
+    frame = np.hstack((frame, panel))
+    frame = cv2.resize(frame, (screen_width, screen_height))
 
     cv2.imshow(win_name, frame)
 
